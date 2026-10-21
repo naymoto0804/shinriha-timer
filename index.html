@@ -7,6 +7,8 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="心リハタイマー">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="manifest" href="manifest.webmanifest">
 <style>
 :root{
   --bg:#EAF1F3; --surface:#FFFFFF; --ink:#16262E; --sub:#5A6E78; --line:#CBD8DD;
@@ -35,6 +37,8 @@ body{margin:0;background:var(--bg);color:var(--ink);
   font-family:"BIZ UDPGothic","Hiragino Kaku Gothic ProN","Yu Gothic",Meiryo,sans-serif;
   line-height:1.5;-webkit-font-smoothing:antialiased}
 .wrap{max-width:1400px;margin:0 auto;padding:16px clamp(12px,3vw,32px) 40px}
+/* iPhoneのホーム画面アプリでは画面最上部にぼかしがかかるため、タイトルを少し下げる */
+@media (display-mode: standalone){ .wrap{padding-top:36px} }
 header{display:flex;flex-wrap:wrap;align-items:center;gap:12px 20px;margin-bottom:16px}
 h1{font-size:1.25rem;margin:0;font-weight:700}
 .clock{font-size:2rem;font-weight:700;font-variant-numeric:tabular-nums;margin-left:auto;letter-spacing:.02em}
@@ -46,7 +50,10 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--teal);outline-o
 button.primary{background:var(--teal);border-color:var(--teal);color:var(--surface);font-weight:700;padding:10px 22px;font-size:1.05rem}
 .form{background:var(--surface);border:1.5px solid var(--line);border-radius:14px;padding:14px 16px;
   display:grid;grid-template-columns:2fr 1fr 1fr auto;gap:12px;align-items:end;margin-bottom:8px}
-.form label{display:flex;flex-direction:column;gap:4px;font-size:.85rem;color:var(--sub)}
+.form label{display:flex;flex-direction:column;gap:4px;font-size:.85rem;color:var(--sub);min-width:0}
+/* iPhoneの時刻入力欄が枠からはみ出さないようにする */
+input[type=time]{-webkit-appearance:none;appearance:none;display:block;min-height:2.6em;max-width:100%}
+input[type=time]::-webkit-date-and-time-value{text-align:left}
 .form input{font:inherit;font-size:1.15rem;color:var(--ink);background:var(--bg);border:1.5px solid var(--line);
   border-radius:8px;padding:8px 10px;width:100%;min-width:0}
 .presets{display:flex;gap:6px;flex-wrap:wrap;align-items:center;font-size:.85rem;color:var(--sub);margin:0 2px 18px}
@@ -86,7 +93,7 @@ dialog::backdrop{background:rgba(10,20,25,.55)}
 .dlg{padding:20px 22px;display:flex;flex-direction:column;gap:14px}
 .dlg h2{margin:0;font-size:1.3rem}
 .dlg .row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-.dlg label{display:flex;flex-direction:column;gap:4px;font-size:.85rem;color:var(--sub)}
+.dlg label{display:flex;flex-direction:column;gap:4px;font-size:.85rem;color:var(--sub);min-width:0}
 .dlg input{font:inherit;font-size:1.15rem;color:var(--ink);background:var(--bg);border:1.5px solid var(--line);border-radius:8px;padding:8px 10px;width:100%;min-width:0}
 .dlg .adj{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:.85rem;color:var(--sub)}
 .dlg .adj button{padding:6px 12px}
@@ -142,6 +149,7 @@ body.display .card .remain .num{font-size:clamp(5rem,11vw,9rem)}
 
   <div class="grid" id="grid"></div>
 
+  <p class="notice" id="offlineStat"></p>
   <p class="notice">読み上げは「30分経過」「残り15分」「終了時間」の3回です。画面を表示したままにしてください（ブラウザを裏に回すと音声が止まることがあります）。このアプリはインターネットに接続せず動作し、入力内容はこの端末のブラウザにだけ保存されます（外部には送信されません）。</p>
 </div>
 
@@ -212,6 +220,9 @@ body.display .card .remain .num{font-size:clamp(5rem,11vw,9rem)}
   }
   if ("speechSynthesis" in window){ pickVoice(); speechSynthesis.onvoiceschanged = pickVoice; }
 
+  // iPhoneの消音モード中でもチャイムが鳴るようにする（対応するiOSのみ）
+  try { if (navigator.audioSession) navigator.audioSession.type = "playback"; } catch(e){}
+
   var audioCtx = null;
   function chime(){
     try {
@@ -228,16 +239,22 @@ body.display .card .remain .num{font-size:clamp(5rem,11vw,9rem)}
       });
     } catch(e){}
   }
-  function speak(text){
+  function say(text){
+    if (!("speechSynthesis" in window)) return;
+    if (!jaVoice) pickVoice();
+    // iPhoneでは読み上げが止まったままになることがあるため、毎回リセットしてから話す
+    speechSynthesis.cancel();
+    var u = new SpeechSynthesisUtterance(text);
+    u.lang = "ja-JP"; u.rate = 0.9; u.pitch = 1; u.volume = 1;
+    if (jaVoice) u.voice = jaVoice;
+    speechSynthesis.speak(u);
+    speechSynthesis.resume();
+  }
+  // now=true はボタンを押した瞬間に話す（iPhoneは最初の読み上げを画面操作の中で始める必要がある）
+  function speak(text, now){
     if (muted) return;
     chime();
-    if (!("speechSynthesis" in window)) return;
-    setTimeout(function(){
-      var u = new SpeechSynthesisUtterance(text);
-      u.lang = "ja-JP"; u.rate = 0.9; u.pitch = 1; u.volume = 1;
-      if (jaVoice) u.voice = jaVoice;
-      speechSynthesis.speak(u);
-    }, 750);
+    if (now) say(text); else setTimeout(function(){ say(text); }, 750);
   }
 
   // ---- 患者 ----
@@ -482,7 +499,7 @@ body.display .card .remain .num{font-size:clamp(5rem,11vw,9rem)}
   $("testBtn").addEventListener("click", function(){
     unlockAudio();
     var was = muted; muted = false;
-    speak("音声テストです。山田さん、残り15分です。");
+    speak("音声テストです。山田さん、残り15分です。", true);
     muted = was;
   });
   function updateMute(){
@@ -501,8 +518,16 @@ body.display .card .remain .num{font-size:clamp(5rem,11vw,9rem)}
   setInterval(tick, 1000);
 
   // https で開いたときだけ、オフライン起動用の仕組みを登録する（ファイルを直接開いた場合は何もしない）
-  if ("serviceWorker" in navigator && location.protocol === "https:"){
-    navigator.serviceWorker.register("sw.js").catch(function(){});
+  var stat = $("offlineStat");
+  if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost")){
+    stat.textContent = "オフライン準備中…（ネットにつないだまま、しばらくお待ちください）";
+    navigator.serviceWorker.register("sw.js")
+      .then(function(){ return navigator.serviceWorker.ready; })
+      .then(function(){ return caches.match("./"); })
+      .then(function(hit){
+        stat.textContent = hit ? "✓ オフライン準備完了：ネットがなくても起動できます" : "オフライン準備ができていません。ネットにつないで開き直してください。";
+      })
+      .catch(function(){ stat.textContent = "この端末ではオフライン起動に対応していません。"; });
   }
 })();
 </script>
