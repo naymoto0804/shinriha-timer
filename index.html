@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>心リハ外来タイマー</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="心リハタイマー">
+<style>
+:root{
+  --bg:#EAF1F3; --surface:#FFFFFF; --ink:#16262E; --sub:#5A6E78; --line:#CBD8DD;
+  --teal:#0C6B70; --teal-soft:#D5ECEC; --amber:#B86E00; --amber-soft:#FBEBD0;
+  --red:#B3261E; --red-soft:#F8DCD9; --wait:#7A8B93;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0F1A1F; --surface:#18262D; --ink:#E6EEF1; --sub:#93A7B0; --line:#2C3D45;
+    --teal:#4FC2C4; --teal-soft:#123537; --amber:#F2A93B; --amber-soft:#3A2B12;
+    --red:#FF7A70; --red-soft:#40191A; --wait:#7E9099; color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0F1A1F; --surface:#18262D; --ink:#E6EEF1; --sub:#93A7B0; --line:#2C3D45;
+  --teal:#4FC2C4; --teal-soft:#123537; --amber:#F2A93B; --amber-soft:#3A2B12;
+  --red:#FF7A70; --red-soft:#40191A; --wait:#7E9099; color-scheme:dark;
+}
+*,*::before,*::after{box-sizing:border-box}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font-family:"BIZ UDPGothic","Hiragino Kaku Gothic ProN","Yu Gothic",Meiryo,sans-serif;
+  line-height:1.5;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1400px;margin:0 auto;padding:16px clamp(12px,3vw,32px) 40px}
+header{display:flex;flex-wrap:wrap;align-items:center;gap:12px 20px;margin-bottom:16px}
+h1{font-size:1.25rem;margin:0;font-weight:700}
+.clock{font-size:2rem;font-weight:700;font-variant-numeric:tabular-nums;margin-left:auto;letter-spacing:.02em}
+.tools{display:flex;gap:8px;flex-wrap:wrap}
+button{font:inherit;cursor:pointer;border-radius:10px;border:1.5px solid var(--line);
+  background:var(--surface);color:var(--ink);padding:8px 14px;font-size:.95rem}
+button:hover{border-color:var(--teal)}
+button:focus-visible,input:focus-visible{outline:3px solid var(--teal);outline-offset:2px}
+button.primary{background:var(--teal);border-color:var(--teal);color:var(--surface);font-weight:700;padding:10px 22px;font-size:1.05rem}
+.form{background:var(--surface);border:1.5px solid var(--line);border-radius:14px;padding:14px 16px;
+  display:grid;grid-template-columns:2fr 1fr 1fr auto;gap:12px;align-items:end;margin-bottom:8px}
+.form label{display:flex;flex-direction:column;gap:4px;font-size:.85rem;color:var(--sub)}
+.form input{font:inherit;font-size:1.15rem;color:var(--ink);background:var(--bg);border:1.5px solid var(--line);
+  border-radius:8px;padding:8px 10px;width:100%;min-width:0}
+.presets{display:flex;gap:6px;flex-wrap:wrap;align-items:center;font-size:.85rem;color:var(--sub);margin:0 2px 18px}
+.presets button{padding:4px 10px;font-size:.85rem}
+.presets button.sel{background:var(--teal);border-color:var(--teal);color:var(--surface);font-weight:700}
+.err{color:var(--red);font-size:.9rem;min-height:1.4em;margin:0 2px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,340px),1fr));gap:16px}
+.card{background:var(--surface);border:2px solid var(--line);border-radius:16px;padding:18px 20px 16px;
+  display:flex;flex-direction:column;gap:6px;position:relative}
+.card .name{font-size:clamp(1.6rem,3vw,2.2rem);font-weight:700;line-height:1.2;padding-right:44px;word-break:break-all}
+.card .remain{display:flex;align-items:baseline;gap:.25em;font-weight:700;font-variant-numeric:tabular-nums}
+.card .remain .lbl{font-size:1.4rem}
+.card .remain .num{font-size:clamp(4.5rem,9vw,7rem);line-height:1;letter-spacing:-.02em}
+.card .remain .unit{font-size:1.8rem}
+.card .msg{font-size:clamp(1.8rem,3.4vw,2.4rem);font-weight:700;line-height:1.2;padding:12px 0}
+.card .meta{display:flex;justify-content:space-between;gap:8px;color:var(--sub);font-size:.95rem;font-variant-numeric:tabular-nums}
+.bar{position:relative;height:12px;border-radius:6px;background:var(--bg);overflow:visible;margin-top:6px}
+.bar .fill{position:absolute;inset:0 auto 0 0;border-radius:6px;background:var(--teal);width:0}
+.bar .tick{position:absolute;top:-4px;bottom:-4px;width:2px;background:var(--sub);opacity:.6}
+.del{position:absolute;top:12px;right:12px;width:36px;height:36px;padding:0;border-radius:50%;font-size:1.2rem;line-height:1;color:var(--sub)}
+.card.running{border-color:var(--teal)}
+.card.running .num{color:var(--teal)}
+.card.last15{border-color:var(--amber);background:var(--amber-soft)}
+.card.last15 .num{color:var(--amber)} .card.last15 .bar .fill{background:var(--amber)}
+.card.ended{border-color:var(--red);background:var(--red-soft)}
+.card.ended .msg{color:var(--red)} .card.ended .bar .fill{background:var(--red)}
+.card.waiting{border-style:dashed}
+.card{cursor:pointer}
+.card:hover{box-shadow:0 0 0 3px var(--teal-soft)}
+.card:focus-visible{outline:3px solid var(--teal);outline-offset:3px}
+.card.paused{border-color:var(--wait);border-style:dashed}
+.card.paused .num,.card.paused .lbl,.card.paused .unit{color:var(--wait)}
+.card.paused .bar .fill{background:var(--wait)}
+.pausetag{display:inline-block;font-size:1rem;font-weight:700;color:var(--surface);background:var(--wait);border-radius:6px;padding:2px 10px;margin-bottom:2px}
+dialog{border:none;border-radius:16px;padding:0;background:var(--surface);color:var(--ink);width:min(520px,calc(100vw - 24px));max-height:calc(100dvh - 24px)}
+dialog::backdrop{background:rgba(10,20,25,.55)}
+.dlg{padding:20px 22px;display:flex;flex-direction:column;gap:14px}
+.dlg h2{margin:0;font-size:1.3rem}
+.dlg .row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.dlg label{display:flex;flex-direction:column;gap:4px;font-size:.85rem;color:var(--sub)}
+.dlg input{font:inherit;font-size:1.15rem;color:var(--ink);background:var(--bg);border:1.5px solid var(--line);border-radius:8px;padding:8px 10px;width:100%;min-width:0}
+.dlg .adj{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:.85rem;color:var(--sub)}
+.dlg .adj button{padding:6px 12px}
+.dlg .pause{font-size:1.1rem;font-weight:700;padding:12px;border-width:2px}
+.dlg .pause.on{background:var(--amber-soft);border-color:var(--amber);color:var(--ink)}
+.dlg .acts{display:flex;gap:8px;justify-content:space-between;flex-wrap:wrap}
+.dlg .acts .right{display:flex;gap:8px}
+.dlg .danger{color:var(--red);border-color:var(--red)}
+.dlg .derr{color:var(--red);font-size:.9rem;min-height:1.2em;margin:0}
+.card.waiting .num{color:var(--wait)}
+.card.ended.flash{animation:flash 1s ease-in-out 6}
+@keyframes flash{50%{box-shadow:0 0 0 8px var(--red)}}
+@media (prefers-reduced-motion:reduce){.card.ended.flash{animation:none}}
+.empty{color:var(--sub);text-align:center;padding:48px 16px;border:2px dashed var(--line);border-radius:16px;font-size:1.05rem}
+.notice{font-size:.85rem;color:var(--sub);margin-top:24px}
+body.display .form,body.display .presets,body.display .err,body.display .notice,body.display .tools .hide-in-display{display:none}
+body.display .del{display:none}
+body.display .card .remain .num{font-size:clamp(5rem,11vw,9rem)}
+@media (max-width:640px){
+  .form{grid-template-columns:1fr 1fr}
+  .form label:first-child{grid-column:1/-1}
+  .form button.primary{grid-column:1/-1}
+  .clock{font-size:1.6rem}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>心リハ外来タイマー</h1>
+    <div class="tools">
+      <button id="testBtn" class="hide-in-display" type="button">音声テスト</button>
+      <button id="muteBtn" type="button" aria-pressed="false">読み上げ：オン</button>
+      <button id="displayBtn" type="button">表示モード</button>
+    </div>
+    <div class="clock" id="clock" aria-live="off">--:--:--</div>
+  </header>
+
+  <div class="form" role="group" aria-label="患者を追加">
+    <label>名前<input id="nameIn" type="text" placeholder="例：山田" autocomplete="off"></label>
+    <label>開始時間<input id="startIn" type="time"></label>
+    <label>終了時間<input id="endIn" type="time"></label>
+    <button id="addBtn" class="primary" type="button">追加</button>
+  </div>
+  <div class="presets">
+    <span>終了時間を開始から：</span>
+    <button type="button" data-min="40">40分</button>
+    <button type="button" data-min="60" class="sel">60分</button>
+    <button type="button" data-min="80">80分</button>
+    <button type="button" id="nowBtn">開始を今に</button>
+  </div>
+  <p class="err" id="err" role="alert"></p>
+
+  <div class="grid" id="grid"></div>
+
+  <p class="notice">読み上げは「30分経過」「残り15分」「終了時間」の3回です。画面を表示したままにしてください（ブラウザを裏に回すと音声が止まることがあります）。このアプリはインターネットに接続せず動作し、入力内容はこの端末のブラウザにだけ保存されます（外部には送信されません）。</p>
+</div>
+
+<dialog id="dlg" aria-labelledby="dlgTitle">
+  <div class="dlg">
+    <h2 id="dlgTitle">タイマーを編集</h2>
+    <button type="button" class="pause" id="pauseBtn">一時停止</button>
+    <label>名前<input id="eName" type="text" autocomplete="off"></label>
+    <div class="row">
+      <label>開始時間<input id="eStart" type="time"></label>
+      <label>終了時間<input id="eEnd" type="time"></label>
+    </div>
+    <div class="adj">
+      <span>終了時間を：</span>
+      <button type="button" data-adj="-5">−5分</button>
+      <button type="button" data-adj="5">＋5分</button>
+      <button type="button" data-adj="10">＋10分</button>
+    </div>
+    <p class="derr" id="dErr" role="alert"></p>
+    <div class="acts">
+      <button type="button" class="danger" id="eDel">削除</button>
+      <div class="right">
+        <button type="button" id="eCancel">キャンセル</button>
+        <button type="button" class="primary" id="eSave">変更を保存</button>
+      </div>
+    </div>
+  </div>
+</dialog>
+
+<script>
+(function(){
+  var KEY = "shinriha-timer-v1";
+  var patients = [];
+  var muted = false;
+  var $ = function(id){ return document.getElementById(id); };
+  var grid = $("grid"), errEl = $("err");
+
+  function load(){
+    try { var raw = localStorage.getItem(KEY); if (raw) { var d = JSON.parse(raw); patients = d.patients || []; muted = !!d.muted; } } catch(e){ patients = []; }
+  }
+  function save(){
+    try { localStorage.setItem(KEY, JSON.stringify({patients:patients, muted:muted})); } catch(e){}
+  }
+
+  function pad(n){ return String(n).padStart(2,"0"); }
+  function hm(d){ return pad(d.getHours()) + ":" + pad(d.getMinutes()); }
+  function timeToDate(str){
+    var p = str.split(":"); var d = new Date();
+    d.setHours(+p[0], +p[1], 0, 0); return d;
+  }
+  function addMinutesStr(str, min){
+    var d = timeToDate(str); d.setMinutes(d.getMinutes()+min); return hm(d);
+  }
+  function setDefaults(){
+    var now = new Date(); now.setSeconds(0,0);
+    $("startIn").value = hm(now);
+    $("endIn").value = addMinutesStr(hm(now), 60);
+  }
+
+  // ---- 音声 ----
+  var jaVoice = null;
+  function pickVoice(){
+    if (!("speechSynthesis" in window)) return;
+    // ネット接続不要な端末内蔵の音声を優先（Google音声などのオンライン音声は使わない）
+    var vs = speechSynthesis.getVoices().filter(function(v){ return /^ja/i.test(v.lang); });
+    var local = vs.filter(function(v){ return v.localService; });
+    jaVoice = local.find(function(v){ return /Haruka|Ayumi|Ichiro|Nanami|Kyoko|O-ren/i.test(v.name); }) || local[0] || null;
+  }
+  if ("speechSynthesis" in window){ pickVoice(); speechSynthesis.onvoiceschanged = pickVoice; }
+
+  var audioCtx = null;
+  function chime(){
+    try {
+      audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtx.state === "suspended") audioCtx.resume();
+      [880, 660].forEach(function(f, i){
+        var o = audioCtx.createOscillator(), g = audioCtx.createGain();
+        var t = audioCtx.currentTime + i*0.35;
+        o.frequency.value = f; o.type = "sine";
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.exponentialRampToValueAtTime(0.35, t+0.03);
+        g.gain.exponentialRampToValueAtTime(0.0001, t+0.32);
+        o.connect(g).connect(audioCtx.destination); o.start(t); o.stop(t+0.34);
+      });
+    } catch(e){}
+  }
+  function speak(text){
+    if (muted) return;
+    chime();
+    if (!("speechSynthesis" in window)) return;
+    setTimeout(function(){
+      var u = new SpeechSynthesisUtterance(text);
+      u.lang = "ja-JP"; u.rate = 0.9; u.pitch = 1; u.volume = 1;
+      if (jaVoice) u.voice = jaVoice;
+      speechSynthesis.speak(u);
+    }, 750);
+  }
+
+  // ---- 患者 ----
+  function addPatient(){
+    errEl.textContent = "";
+    var name = $("nameIn").value.trim();
+    var s = $("startIn").value, e = $("endIn").value;
+    if (!name){ errEl.textContent = "名前を入力してください。"; $("nameIn").focus(); return; }
+    if (!s || !e){ errEl.textContent = "開始時間と終了時間を入力してください。"; return; }
+    var start = timeToDate(s), end = timeToDate(e);
+    if (end <= start){ errEl.textContent = "終了時間は開始時間より後にしてください。"; return; }
+    var now = Date.now();
+    var p = {
+      id: Date.now().toString(36) + Math.random().toString(36).slice(2,6),
+      name: name, start: start.getTime(), end: end.getTime(),
+      done: { half: false, last15: false, end: false }
+    };
+    // 追加時点ですでに過ぎているお知らせは読み上げない
+    if (now >= p.start + 30*60000) p.done.half = true;
+    if (now >= p.end - 15*60000) p.done.last15 = true;
+    if (now >= p.end) p.done.end = true;
+    patients.push(p);
+    patients.sort(function(a,b){ return a.end - b.end; });
+    save();
+    unlockAudio();
+    $("nameIn").value = ""; $("nameIn").focus();
+    render(); tick();
+  }
+  function removePatient(id){
+    patients = patients.filter(function(p){ return p.id !== id; });
+    save(); render(); tick();
+  }
+
+  function render(){
+    grid.innerHTML = "";
+    if (!patients.length){
+      var em = document.createElement("div");
+      em.className = "empty";
+      em.textContent = "名前・開始時間・終了時間を入れて「追加」を押すと、ここに残り時間が表示されます。";
+      grid.appendChild(em); return;
+    }
+    patients.forEach(function(p){
+      var c = document.createElement("article");
+      c.className = "card"; c.id = "c-" + p.id;
+      var total = p.end - p.start;
+      var ticks = "";
+      [30*60000, total - 15*60000].forEach(function(ms){
+        if (ms > 0 && ms < total) ticks += '<span class="tick" style="left:' + (ms/total*100).toFixed(2) + '%"></span>';
+      });
+      c.innerHTML =
+        '<button class="del" type="button" aria-label="' + esc(p.name) + 'さんを削除">×</button>' +
+        '<div class="name">' + esc(p.name) + 'さん</div>' +
+        '<div class="body"></div>' +
+        '<div class="bar"><span class="fill"></span>' + ticks + '</div>' +
+        '<div class="meta"><span>' + hm(new Date(p.start)) + '〜' + hm(new Date(p.end)) + '</span><span class="sec"></span></div>';
+      c.tabIndex = 0;
+      c.setAttribute("role", "button");
+      c.setAttribute("aria-label", p.name + "さんのタイマーを編集");
+      c.querySelector(".del").addEventListener("click", function(ev){
+        ev.stopPropagation();
+        if (confirm(p.name + "さんのタイマーを削除しますか？")) removePatient(p.id);
+      });
+      c.addEventListener("click", function(){ openEdit(p.id); });
+      c.addEventListener("keydown", function(ev){ if (ev.key === "Enter" || ev.key === " "){ ev.preventDefault(); openEdit(p.id); } });
+      grid.appendChild(c);
+    });
+  }
+  function esc(s){ return s.replace(/[&<>"']/g, function(ch){ return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[ch]; }); }
+
+  function tick(){
+    var realNow = Date.now(), d = new Date(realNow);
+    $("clock").textContent = pad(d.getHours()) + ":" + pad(d.getMinutes()) + ":" + pad(d.getSeconds());
+    var changed = false;
+    patients.forEach(function(p){
+      var c = document.getElementById("c-" + p.id); if (!c) return;
+      var paused = !!p.pausedAt;
+      var now = paused ? p.pausedAt : realNow;
+      var total = p.end - p.start, left = p.end - now, elapsed = now - p.start;
+      var body = c.querySelector(".body"), fill = c.querySelector(".fill"), sec = c.querySelector(".sec");
+      var state, html;
+      if (now < p.start){
+        state = "waiting";
+        html = '<div class="remain"><span class="lbl">開始まで</span><span class="num">' + Math.ceil((p.start-now)/60000) + '</span><span class="unit">分</span></div>';
+        sec.textContent = "";
+      } else if (left > 0){
+        state = left <= 15*60000 ? "last15" : "running";
+        html = '<div class="remain"><span class="lbl">残り</span><span class="num">' + Math.ceil(left/60000) + '</span><span class="unit">分</span></div>';
+        var s = Math.ceil(left/1000);
+        sec.textContent = "あと " + Math.floor(s/60) + ":" + pad(s%60);
+      } else {
+        state = "ended";
+        html = '<div class="msg">終了時間です</div>';
+        sec.textContent = "";
+      }
+      if (paused){
+        html = '<span class="pausetag">一時停止中</span>' + html;
+        sec.textContent = "タップして再開できます";
+      }
+      var key = state + (paused ? "-p" : "");
+      if (c.dataset.state !== key){
+        c.className = "card " + state + (paused ? " paused" : "") + (state === "ended" && c.dataset.state && !paused ? " flash" : "");
+        c.dataset.state = key;
+      }
+      if (body.innerHTML !== html) body.innerHTML = html;
+      fill.style.width = Math.min(100, Math.max(0, elapsed/total*100)) + "%";
+
+      // 読み上げ（一時停止中はしない）
+      if (paused) return;
+      if (!p.done.end && now >= p.end){
+        p.done.end = p.done.last15 = p.done.half = true; changed = true;
+        speak(p.name + "さん、終了時間です。お疲れさまでした。");
+      } else if (!p.done.last15 && now >= p.end - 15*60000 && now >= p.start){
+        p.done.last15 = true; changed = true;
+        if (now >= p.start + 30*60000) p.done.half = true;
+        speak(p.name + "さん、残り15分です。");
+      } else if (!p.done.half && now >= p.start + 30*60000){
+        p.done.half = true; changed = true;
+        speak(p.name + "さん、30分経過しました。");
+      }
+    });
+    if (changed) save();
+  }
+
+  // ---- 編集 ----
+  var editId = null;
+  var dlg = $("dlg");
+  function findP(id){ return patients.find(function(p){ return p.id === id; }); }
+  // 時間を変えたら、まだ来ていないお知らせは読み上げ直す
+  function resetDone(p){
+    var now = p.pausedAt || Date.now();
+    p.done = {
+      half: now >= p.start + 30*60000,
+      last15: now >= p.end - 15*60000,
+      end: now >= p.end
+    };
+  }
+  function updatePauseBtn(p){
+    var b = $("pauseBtn");
+    b.textContent = p.pausedAt ? "再開する" : "一時停止";
+    b.classList.toggle("on", !!p.pausedAt);
+  }
+  function openEdit(id){
+    var p = findP(id); if (!p) return;
+    unlockAudio();
+    editId = id;
+    $("eName").value = p.name;
+    $("eStart").value = hm(new Date(p.start));
+    $("eEnd").value = hm(new Date(p.end));
+    $("dErr").textContent = "";
+    updatePauseBtn(p);
+    if (dlg.showModal) dlg.showModal(); else dlg.setAttribute("open", "");
+  }
+  function closeEdit(){ editId = null; if (dlg.close) dlg.close(); else dlg.removeAttribute("open"); }
+  function dateOnSameDay(base, str){
+    var d = new Date(base), q = str.split(":");
+    d.setHours(+q[0], +q[1], 0, 0); return d.getTime();
+  }
+
+  $("pauseBtn").addEventListener("click", function(){
+    var p = findP(editId); if (!p) return;
+    if (p.pausedAt){
+      // 再開：止めていた時間だけ開始・終了を後ろにずらす
+      var gap = Date.now() - p.pausedAt;
+      p.start += gap; p.end += gap; p.pausedAt = null;
+    } else {
+      p.pausedAt = Date.now();
+    }
+    save(); render(); tick(); closeEdit();
+  });
+  document.querySelectorAll("[data-adj]").forEach(function(b){
+    b.addEventListener("click", function(){
+      if ($("eEnd").value) $("eEnd").value = addMinutesStr($("eEnd").value, +b.dataset.adj);
+    });
+  });
+  $("eSave").addEventListener("click", function(){
+    var p = findP(editId); if (!p) return;
+    var name = $("eName").value.trim();
+    if (!name){ $("dErr").textContent = "名前を入力してください。"; return; }
+    if (!$("eStart").value || !$("eEnd").value){ $("dErr").textContent = "開始時間と終了時間を入力してください。"; return; }
+    var ns = dateOnSameDay(p.start, $("eStart").value), ne = dateOnSameDay(p.start, $("eEnd").value);
+    if (ne <= ns){ $("dErr").textContent = "終了時間は開始時間より後にしてください。"; return; }
+    p.name = name; p.start = ns; p.end = ne;
+    if (p.pausedAt && p.pausedAt < ns) p.pausedAt = ns;
+    resetDone(p);
+    patients.sort(function(a,b){ return a.end - b.end; });
+    save(); render(); tick(); closeEdit();
+  });
+  $("eCancel").addEventListener("click", closeEdit);
+  $("eDel").addEventListener("click", function(){
+    var p = findP(editId); if (!p) return;
+    if (confirm(p.name + "さんのタイマーを削除しますか？")){ closeEdit(); removePatient(p.id); }
+  });
+  dlg.addEventListener("click", function(ev){ if (ev.target === dlg) closeEdit(); });
+  dlg.addEventListener("keydown", function(ev){ if (ev.key === "Enter" && ev.target.tagName === "INPUT" && !ev.isComposing) $("eSave").click(); });
+
+  // iOS などで音声を有効にするため、最初の操作時に無音で一度鳴らす
+  var unlocked = false;
+  function unlockAudio(){
+    if (unlocked) return; unlocked = true;
+    try {
+      audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+      audioCtx.resume();
+      if ("speechSynthesis" in window){ var u = new SpeechSynthesisUtterance(" "); u.volume = 0; speechSynthesis.speak(u); }
+    } catch(e){}
+  }
+  document.addEventListener("pointerdown", unlockAudio, {once:true});
+
+  // 画面のスリープ防止
+  var wakeLock = null;
+  async function keepAwake(){
+    try { if ("wakeLock" in navigator && document.visibilityState === "visible") wakeLock = await navigator.wakeLock.request("screen"); } catch(e){}
+  }
+  document.addEventListener("visibilitychange", function(){ if (document.visibilityState === "visible"){ keepAwake(); tick(); } });
+
+  // ---- イベント ----
+  $("addBtn").addEventListener("click", addPatient);
+  ["nameIn","startIn","endIn"].forEach(function(id){
+    $(id).addEventListener("keydown", function(e){ if (e.key === "Enter" && !e.isComposing) addPatient(); });
+  });
+  document.querySelectorAll(".presets [data-min]").forEach(function(b){
+    b.addEventListener("click", function(){
+      if (!$("startIn").value) setDefaults();
+      $("endIn").value = addMinutesStr($("startIn").value, +b.dataset.min);
+      document.querySelectorAll(".presets [data-min]").forEach(function(x){ x.classList.toggle("sel", x === b); });
+    });
+  });
+  // 開始時間を変えたら、選択中の時間で終了時間も合わせる
+  $("startIn").addEventListener("change", function(){
+    var sel = document.querySelector(".presets .sel");
+    if (sel && $("startIn").value) $("endIn").value = addMinutesStr($("startIn").value, +sel.dataset.min);
+  });
+  // 終了時間を手で変えたら選択を外す
+  $("endIn").addEventListener("input", function(){
+    document.querySelectorAll(".presets [data-min]").forEach(function(x){ x.classList.remove("sel"); });
+  });
+  $("nowBtn").addEventListener("click", function(){
+    var s = $("startIn").value, e = $("endIn").value;
+    var dur = (s && e) ? (timeToDate(e) - timeToDate(s))/60000 : 60;
+    var now = new Date(); $("startIn").value = hm(now);
+    $("endIn").value = addMinutesStr(hm(now), dur > 0 ? dur : 60);
+  });
+  $("testBtn").addEventListener("click", function(){
+    unlockAudio();
+    var was = muted; muted = false;
+    speak("音声テストです。山田さん、残り15分です。");
+    muted = was;
+  });
+  function updateMute(){
+    $("muteBtn").textContent = "読み上げ：" + (muted ? "オフ" : "オン");
+    $("muteBtn").setAttribute("aria-pressed", String(muted));
+  }
+  $("muteBtn").addEventListener("click", function(){ muted = !muted; if (muted && "speechSynthesis" in window) speechSynthesis.cancel(); updateMute(); save(); });
+  $("displayBtn").addEventListener("click", function(){
+    var on = document.body.classList.toggle("display");
+    $("displayBtn").textContent = on ? "入力に戻る" : "表示モード";
+    if (on && document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(function(){});
+    if (!on && document.fullscreenElement) document.exitFullscreen().catch(function(){});
+  });
+
+  load(); updateMute(); setDefaults(); render(); tick(); keepAwake();
+  setInterval(tick, 1000);
+
+  // https で開いたときだけ、オフライン起動用の仕組みを登録する（ファイルを直接開いた場合は何もしない）
+  if ("serviceWorker" in navigator && location.protocol === "https:"){
+    navigator.serviceWorker.register("sw.js").catch(function(){});
+  }
+})();
+</script>
+</body>
+</html>
