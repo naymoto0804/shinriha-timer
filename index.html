@@ -59,6 +59,8 @@ input[type=time]::-webkit-date-and-time-value{text-align:left}
   border-radius:8px;padding:8px 10px;width:100%;min-width:0}
 .presets{display:flex;gap:6px;flex-wrap:wrap;align-items:center;font-size:.85rem;color:var(--sub);margin:0 2px 18px}
 .presets button{padding:4px 10px;font-size:.85rem}
+.presets label{display:inline-flex;align-items:center;gap:6px;margin-right:12px;max-width:100%}
+.presets select{font:inherit;font-size:.85rem;color:var(--ink);background:var(--surface);border:1.5px solid var(--line);border-radius:8px;padding:4px 8px;max-width:100%;min-width:0}
 .presets button.sel{background:var(--teal);border-color:var(--teal);color:var(--surface);font-weight:700}
 .err{color:var(--red);font-size:.9rem;min-height:1.4em;margin:0 2px}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,340px),1fr));gap:16px}
@@ -124,7 +126,7 @@ body.display .card .remain .num{font-size:clamp(5rem,11vw,9rem)}
 <body>
 <div class="wrap">
   <header>
-    <h1>心リハ外来タイマー <span class="ver">Ver.3</span></h1>
+    <h1>心リハ外来タイマー <span class="ver">Ver.4</span></h1>
     <div class="tools">
       <button id="testBtn" class="hide-in-display" type="button">音声テスト</button>
       <button id="muteBtn" type="button" aria-pressed="false">読み上げ：オン</button>
@@ -146,12 +148,19 @@ body.display .card .remain .num{font-size:clamp(5rem,11vw,9rem)}
     <button type="button" data-min="80">80分</button>
     <button type="button" id="nowBtn">開始を今に</button>
   </div>
+  <div class="presets settings">
+    <label>読み上げの声 <select id="voiceSel"><option value="">自動</option></select></label>
+    <span>チャイムの音量：</span>
+    <button type="button" data-vol="大">大</button>
+    <button type="button" data-vol="中">中</button>
+    <button type="button" data-vol="小">小</button>
+  </div>
   <p class="err" id="err" role="alert"></p>
 
   <div class="grid" id="grid"></div>
 
   <p class="notice" id="offlineStat"></p>
-  <p class="notice">読み上げは「30分経過」「残り15分」「終了時間」の3回です。画面を表示したままにしてください（ブラウザを裏に回すと音声が止まることがあります）。このアプリはインターネットに接続せず動作し、入力内容はこの端末のブラウザにだけ保存されます（外部には送信されません）。<br>Ver.3（2026-10-23）</p>
+  <p class="notice">読み上げは「30分経過」「残り15分」「終了時間」の3回です。画面を表示したままにしてください（ブラウザを裏に回すと音声が止まることがあります）。このアプリはインターネットに接続せず動作し、入力内容はこの端末のブラウザにだけ保存されます（外部には送信されません）。<br>Ver.4（2026-10-23）</p>
 </div>
 
 <dialog id="dlg" aria-labelledby="dlgTitle">
@@ -185,14 +194,23 @@ body.display .card .remain .num{font-size:clamp(5rem,11vw,9rem)}
   var KEY = "shinriha-timer-v1";
   var patients = [];
   var muted = false;
+  var voiceURI = "";      // 選んだ読み上げの声（空なら自動）
+  var chimeVol = "大";    // チャイムの音量
   var $ = function(id){ return document.getElementById(id); };
   var grid = $("grid"), errEl = $("err");
 
   function load(){
-    try { var raw = localStorage.getItem(KEY); if (raw) { var d = JSON.parse(raw); patients = d.patients || []; muted = !!d.muted; } } catch(e){ patients = []; }
+    try {
+      var raw = localStorage.getItem(KEY);
+      if (raw) {
+        var d = JSON.parse(raw);
+        patients = d.patients || []; muted = !!d.muted;
+        voiceURI = d.voiceURI || ""; chimeVol = d.chimeVol || "大";
+      }
+    } catch(e){ patients = []; }
   }
   function save(){
-    try { localStorage.setItem(KEY, JSON.stringify({patients:patients, muted:muted})); } catch(e){}
+    try { localStorage.setItem(KEY, JSON.stringify({patients:patients, muted:muted, voiceURI:voiceURI, chimeVol:chimeVol})); } catch(e){}
   }
 
   function pad(n){ return String(n).padStart(2,"0"); }
@@ -212,12 +230,40 @@ body.display .card .remain .num{font-size:clamp(5rem,11vw,9rem)}
 
   // ---- 音声 ----
   var jaVoice = null;
+  // 声の自然さの目安：プレミアム＞拡張＞標準（iPhone・iPad・Macは設定からダウンロードできる）
+  function voiceRank(v){
+    var id = (v.voiceURI || "") + " " + v.name;
+    if (/premium|プレミアム/i.test(id)) return 3;
+    if (/enhanced|拡張/i.test(id)) return 2;
+    if (/Nanami|Haruka|Ayumi|Kyoko|Otoya|O-ren/i.test(id)) return 1;
+    return 0;
+  }
+  function voiceLabel(v){
+    var r = voiceRank(v);
+    return v.name + (r === 3 ? "（プレミアム）" : r === 2 && !/拡張|enhanced/i.test(v.name) ? "（拡張）" : "");
+  }
+  function jaVoices(){
+    // ネット接続不要な端末内蔵の音声だけを使う（Google音声などのオンライン音声は使わない）
+    // Eddy・Grandma などの機械的な声は、聞き取りにくいので一覧から外す
+    var vs = speechSynthesis.getVoices().filter(function(v){
+      return /^ja/i.test(v.lang) && !/^(Eddy|Flo|Grandma|Grandpa|Reed|Rocko|Sandy|Shelley)\b/i.test(v.name);
+    });
+    var local = vs.filter(function(v){ return v.localService; });
+    return (local.length ? local : vs).sort(function(a, b){ return voiceRank(b) - voiceRank(a); });
+  }
   function pickVoice(){
     if (!("speechSynthesis" in window)) return;
-    // ネット接続不要な端末内蔵の音声を優先（Google音声などのオンライン音声は使わない）
-    var vs = speechSynthesis.getVoices().filter(function(v){ return /^ja/i.test(v.lang); });
-    var local = vs.filter(function(v){ return v.localService; });
-    jaVoice = local.find(function(v){ return /Haruka|Ayumi|Ichiro|Nanami|Kyoko|O-ren/i.test(v.name); }) || local[0] || null;
+    var list = jaVoices();
+    jaVoice = list.find(function(v){ return v.voiceURI === voiceURI; }) || list[0] || null;
+    // 声の選択欄を作り直す
+    var sel = $("voiceSel"); if (!sel) return;
+    sel.innerHTML = '<option value="">自動（いちばん自然な声）</option>';
+    list.forEach(function(v){
+      var o = document.createElement("option");
+      o.value = v.voiceURI; o.textContent = voiceLabel(v);
+      sel.appendChild(o);
+    });
+    sel.value = list.some(function(v){ return v.voiceURI === voiceURI; }) ? voiceURI : "";
   }
   if ("speechSynthesis" in window){ pickVoice(); speechSynthesis.onvoiceschanged = pickVoice; }
 
@@ -230,6 +276,7 @@ body.display .card .remain .num{font-size:clamp(5rem,11vw,9rem)}
     notice: { gap: 0.38, notes: [698, 880, 1047, 1397] },
     end:    { gap: 0.62, notes: [659, 523, 587, 392, 392, 587, 659, 523] }
   };
+  var CHIME_GAIN = { "大": 1.6, "中": 0.7, "小": 0.3 };
   var audioCtx = null, master = null;
   function ctx(){
     audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
@@ -240,7 +287,7 @@ body.display .card .remain .num{font-size:clamp(5rem,11vw,9rem)}
       var comp = audioCtx.createDynamicsCompressor();
       comp.threshold.value = -12; comp.knee.value = 0; comp.ratio.value = 12;
       comp.attack.value = 0.003; comp.release.value = 0.25;
-      master = audioCtx.createGain(); master.gain.value = 1.6;
+      master = audioCtx.createGain(); master.gain.value = CHIME_GAIN[chimeVol] || 1.6;
       comp.connect(master).connect(audioCtx.destination);
       master.input = comp;
     }
@@ -280,7 +327,7 @@ body.display .card .remain .num{font-size:clamp(5rem,11vw,9rem)}
   // ---- 読み上げ ----
   function utter(text, vol){
     var u = new SpeechSynthesisUtterance(text);
-    u.lang = "ja-JP"; u.rate = 0.9; u.pitch = 1; u.volume = vol == null ? 1 : vol;
+    u.lang = "ja-JP"; u.rate = 1.0; u.pitch = 1; u.volume = vol == null ? 1 : vol;
     if (jaVoice) u.voice = jaVoice;
     return u;
   }
@@ -578,6 +625,21 @@ body.display .card .remain .num{font-size:clamp(5rem,11vw,9rem)}
     announce("end", ["山田さん、終了時間です。"]);
     muted = was;
   });
+  // 読み上げの声・チャイムの音量（選んだら試しに鳴らす）
+  $("voiceSel").addEventListener("change", function(){
+    voiceURI = this.value; pickVoice(); save();
+    unlockAudio(); sayNow("山田さん、終了時間です。");
+  });
+  function updateVol(){
+    document.querySelectorAll("[data-vol]").forEach(function(x){ x.classList.toggle("sel", x.dataset.vol === chimeVol); });
+    if (master) master.gain.value = CHIME_GAIN[chimeVol];
+  }
+  document.querySelectorAll("[data-vol]").forEach(function(b){
+    b.addEventListener("click", function(){
+      chimeVol = b.dataset.vol; updateVol(); save();
+      unlockAudio(); chime("notice");
+    });
+  });
   function updateMute(){
     $("muteBtn").textContent = "読み上げ：" + (muted ? "オフ" : "オン");
     $("muteBtn").setAttribute("aria-pressed", String(muted));
@@ -596,7 +658,7 @@ body.display .card .remain .num{font-size:clamp(5rem,11vw,9rem)}
     if (!on && document.fullscreenElement) document.exitFullscreen().catch(function(){});
   });
 
-  load(); updateMute(); setDefaults(); render(); tick(); keepAwake();
+  load(); pickVoice(); updateVol(); updateMute(); setDefaults(); render(); tick(); keepAwake();
   setInterval(tick, 1000);
 
   // https で開いたときだけ、オフライン起動用の仕組みを登録する（ファイルを直接開いた場合は何もしない）
