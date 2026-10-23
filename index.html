@@ -126,7 +126,7 @@ body.display .card .remain .num{font-size:clamp(5rem,11vw,9rem)}
 <body>
 <div class="wrap">
   <header>
-    <h1>心リハ外来タイマー <span class="ver">Ver.4</span></h1>
+    <h1>心リハ外来タイマー <span class="ver">Ver.5</span></h1>
     <div class="tools">
       <button id="testBtn" class="hide-in-display" type="button">音声テスト</button>
       <button id="muteBtn" type="button" aria-pressed="false">読み上げ：オン</button>
@@ -160,7 +160,7 @@ body.display .card .remain .num{font-size:clamp(5rem,11vw,9rem)}
   <div class="grid" id="grid"></div>
 
   <p class="notice" id="offlineStat"></p>
-  <p class="notice">読み上げは「30分経過」「残り15分」「終了時間」の3回です。画面を表示したままにしてください（ブラウザを裏に回すと音声が止まることがあります）。このアプリはインターネットに接続せず動作し、入力内容はこの端末のブラウザにだけ保存されます（外部には送信されません）。<br>Ver.4（2026-10-23）</p>
+  <p class="notice">読み上げは「30分経過」「残り15分」「終了時間」の3回です。画面を表示したままにしてください（ブラウザを裏に回すと音声が止まることがあります）。このアプリはインターネットに接続せず動作し、入力内容はこの端末のブラウザにだけ保存されます（外部には送信されません）。<br>Ver.5（2026-10-23）</p>
 </div>
 
 <dialog id="dlg" aria-labelledby="dlgTitle">
@@ -359,14 +359,21 @@ body.display .card .remain .num{font-size:clamp(5rem,11vw,9rem)}
     var job = queue.shift();
     var wait = chime(job.kind);
     setTimeout(function(){
+      quietChime();
       sayLines(job.lines, function(){ busy = false; setTimeout(runQueue, 600); });
     }, wait * 1000);
+  }
+  // iPhone・iPadはチャイムの仕組みが動いていると読み上げの声が小さくなるため、読む前に止める
+  // （次のチャイムのときに ctx() が再開させる）
+  function quietChime(){
+    try { if (audioCtx && audioCtx.state === "running") audioCtx.suspend(); } catch(e){}
   }
   // ボタンを押したその場で読み上げる（iPhone・iPadは、画面操作の瞬間に読み上げを始めないと、以後も声が出ない）
   // 読み終わるまでは、チャイムのお知らせを待たせる
   function sayNow(text){
     if (muted) return;
     busy = true;
+    quietChime();
     sayLines([text], function(){ busy = false; setTimeout(runQueue, 400); });
   }
   function joinNames(list){ return list.map(function(n){ return n + "さん"; }).join("、"); }

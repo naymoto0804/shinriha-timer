@@ -1,5 +1,5 @@
 // 一度開いたらオフラインでも起動できるように、アプリ本体を端末に保存する
-var CACHE = "shinriha-timer-v6";
+var CACHE = "shinriha-timer-v7";
 var FILES = ["./", "./index.html", "./manifest.webmanifest"];
 
 // iPhone(Safari)はリダイレクト経由の応答を表示できないため、中身だけを取り出して保存する
