@@ -124,7 +124,7 @@ body.display .card .remain .num{font-size:clamp(5rem,11vw,9rem)}
 <body>
 <div class="wrap">
   <header>
-    <h1>心リハ外来タイマー <span class="ver">Ver.2</span></h1>
+    <h1>心リハ外来タイマー <span class="ver">Ver.3</span></h1>
     <div class="tools">
       <button id="testBtn" class="hide-in-display" type="button">音声テスト</button>
       <button id="muteBtn" type="button" aria-pressed="false">読み上げ：オン</button>
@@ -147,12 +147,11 @@ body.display .card .remain .num{font-size:clamp(5rem,11vw,9rem)}
     <button type="button" id="nowBtn">開始を今に</button>
   </div>
   <p class="err" id="err" role="alert"></p>
-  <p class="notice" id="diag" style="margin:0 2px 12px"></p>
 
   <div class="grid" id="grid"></div>
 
   <p class="notice" id="offlineStat"></p>
-  <p class="notice">読み上げは「30分経過」「残り15分」「終了時間」の3回です。画面を表示したままにしてください（ブラウザを裏に回すと音声が止まることがあります）。このアプリはインターネットに接続せず動作し、入力内容はこの端末のブラウザにだけ保存されます（外部には送信されません）。<br>Ver.2（2026-10-23）</p>
+  <p class="notice">読み上げは「30分経過」「残り15分」「終了時間」の3回です。画面を表示したままにしてください（ブラウザを裏に回すと音声が止まることがあります）。このアプリはインターネットに接続せず動作し、入力内容はこの端末のブラウザにだけ保存されます（外部には送信されません）。<br>Ver.3（2026-10-23）</p>
 </div>
 
 <dialog id="dlg" aria-labelledby="dlgTitle">
@@ -578,16 +577,6 @@ body.display .card .remain .num{font-size:clamp(5rem,11vw,9rem)}
     announce("notice", ["山田さん、残り15分です。"]);
     announce("end", ["山田さん、終了時間です。"]);
     muted = was;
-    // 音が出ないときの原因調べ用：10秒後に状態を画面に表示する
-    $("diag").textContent = "音声テスト中…";
-    setTimeout(function(){
-      var vs = ("speechSynthesis" in window) ? speechSynthesis.getVoices() : [];
-      var ja = vs.filter(function(v){ return /^ja/i.test(v.lang); });
-      $("diag").textContent = "【音声の診断】日本語の声：" + ja.length + "個" +
-        "／使用する声：" + (jaVoice ? jaVoice.name : "端末まかせ") +
-        "／チャイム：" + (audioCtx ? audioCtx.state : "未起動") +
-        "／消音対策：" + (navigator.audioSession ? navigator.audioSession.type : "非対応");
-    }, 10000);
   });
   function updateMute(){
     $("muteBtn").textContent = "読み上げ：" + (muted ? "オフ" : "オン");
