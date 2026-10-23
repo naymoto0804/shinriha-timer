@@ -146,11 +146,12 @@ body.display .card .remain .num{font-size:clamp(5rem,11vw,9rem)}
     <button type="button" id="nowBtn">開始を今に</button>
   </div>
   <p class="err" id="err" role="alert"></p>
+  <p class="notice" id="diag" style="margin:0 2px 12px"></p>
 
   <div class="grid" id="grid"></div>
 
   <p class="notice" id="offlineStat"></p>
-  <p class="notice">読み上げは「30分経過」「残り15分」「終了時間」の3回です。画面を表示したままにしてください（ブラウザを裏に回すと音声が止まることがあります）。このアプリはインターネットに接続せず動作し、入力内容はこの端末のブラウザにだけ保存されます（外部には送信されません）。</p>
+  <p class="notice">読み上げは「30分経過」「残り15分」「終了時間」の3回です。画面を表示したままにしてください（ブラウザを裏に回すと音声が止まることがあります）。このアプリはインターネットに接続せず動作し、入力内容はこの端末のブラウザにだけ保存されます（外部には送信されません）。<br>版：2026-10-23b</p>
 </div>
 
 <dialog id="dlg" aria-labelledby="dlgTitle">
@@ -223,39 +224,105 @@ body.display .card .remain .num{font-size:clamp(5rem,11vw,9rem)}
   // iPhoneの消音モード中でもチャイムが鳴るようにする（対応するiOSのみ）
   try { if (navigator.audioSession) navigator.audioSession.type = "playback"; } catch(e){}
 
-  var audioCtx = null;
-  function chime(){
+  // ---- チャイム ----
+  // notice：30分経過・残り15分（ピンポンパンポン）／end：終了（キーンコーンカーンコーン）
+  var MELODY = {
+    notice: { gap: 0.38, notes: [698, 880, 1047, 1397] },
+    end:    { gap: 0.62, notes: [659, 523, 587, 392, 392, 587, 659, 523] }
+  };
+  var audioCtx = null, master = null;
+  function ctx(){
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    // iPhone・iPadは読み上げのあと音の出力が「中断」状態になるため、止まっていたら毎回再開させる
+    if (audioCtx.state !== "running") audioCtx.resume();
+    if (!master){
+      // 音割れさせずに音量を最大まで上げるため、コンプレッサーを通す
+      var comp = audioCtx.createDynamicsCompressor();
+      comp.threshold.value = -12; comp.knee.value = 0; comp.ratio.value = 12;
+      comp.attack.value = 0.003; comp.release.value = 0.25;
+      master = audioCtx.createGain(); master.gain.value = 1.6;
+      comp.connect(master).connect(audioCtx.destination);
+      master.input = comp;
+    }
+    return audioCtx;
+  }
+  // 鐘のような音：基音に倍音を重ねて、ゆっくり減衰させる
+  function bell(t, f, len){
+    [[1, 0.9], [2, 0.45], [3, 0.22], [4.2, 0.1]].forEach(function(h){
+      var o = audioCtx.createOscillator(), g = audioCtx.createGain();
+      var d = len / Math.sqrt(h[0]);
+      o.type = "sine"; o.frequency.value = f * h[0];
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(h[1], t + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + d);
+      o.connect(g).connect(master.input); o.start(t); o.stop(t + d + 0.05);
+    });
+  }
+  // 鳴らし終わるまでの秒数を返す
+  function chime(kind){
+    var m = MELODY[kind] || MELODY.notice;
     try {
-      audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
-      if (audioCtx.state === "suspended") audioCtx.resume();
-      [880, 660].forEach(function(f, i){
-        var o = audioCtx.createOscillator(), g = audioCtx.createGain();
-        var t = audioCtx.currentTime + i*0.35;
-        o.frequency.value = f; o.type = "sine";
-        g.gain.setValueAtTime(0.0001, t);
-        g.gain.exponentialRampToValueAtTime(0.35, t+0.03);
-        g.gain.exponentialRampToValueAtTime(0.0001, t+0.32);
-        o.connect(g).connect(audioCtx.destination); o.start(t); o.stop(t+0.34);
-      });
-    } catch(e){}
+      ctx();
+      var play = function(){
+        var t0 = audioCtx.currentTime + 0.05;
+        m.notes.forEach(function(f, i){
+          var last = i === m.notes.length - 1;
+          bell(t0 + i * m.gap, f, last ? 1.8 : 1.2);
+        });
+      };
+      // 再開が終わってから鳴らす（止まったまま予約すると音が出ないことがある）
+      if (audioCtx.state !== "running" && audioCtx.resume) audioCtx.resume().then(play, play);
+      else play();
+    } catch(e){ return 0; }
+    return m.gap * (m.notes.length - 1) + 1.0;
   }
-  function say(text){
-    if (!("speechSynthesis" in window)) return;
-    if (!jaVoice) pickVoice();
-    // iPhoneでは読み上げが止まったままになることがあるため、毎回リセットしてから話す
-    speechSynthesis.cancel();
+
+  // ---- 読み上げ ----
+  function utter(text, vol){
     var u = new SpeechSynthesisUtterance(text);
-    u.lang = "ja-JP"; u.rate = 0.9; u.pitch = 1; u.volume = 1;
+    u.lang = "ja-JP"; u.rate = 0.9; u.pitch = 1; u.volume = vol == null ? 1 : vol;
     if (jaVoice) u.voice = jaVoice;
-    speechSynthesis.speak(u);
-    speechSynthesis.resume();
+    return u;
   }
-  // now=true はボタンを押した瞬間に話す（iPhoneは最初の読み上げを画面操作の中で始める必要がある）
-  function speak(text, now){
+  // 文を1つずつ順番に読む（読み終わりの合図が来ない端末もあるので、時間でも次へ進める）
+  function sayLines(lines, done){
+    if (!("speechSynthesis" in window)){ done(); return; }
+    if (!jaVoice) pickVoice();
+    var i = 0;
+    (function next(){
+      if (i >= lines.length || muted){ done(); return; }
+      var text = lines[i++], finished = false, timer;
+      var fin = function(){ if (finished) return; finished = true; clearTimeout(timer); setTimeout(next, 250); };
+      var u = utter(text); u.onend = fin; u.onerror = fin;
+      timer = setTimeout(fin, 2500 + text.length * 300);
+      if (speechSynthesis.paused) speechSynthesis.resume();
+      speechSynthesis.speak(u);
+    })();
+  }
+  // お知らせは順番待ちの列に入れ、チャイム→読み上げを1件ずつ行う（重ならないように）
+  var queue = [], busy = false;
+  function announce(kind, lines){
     if (muted) return;
-    chime();
-    if (now) say(text); else setTimeout(function(){ say(text); }, 750);
+    queue.push({ kind: kind, lines: lines });
+    runQueue();
   }
+  function runQueue(){
+    if (busy || !queue.length) return;
+    busy = true;
+    var job = queue.shift();
+    var wait = chime(job.kind);
+    setTimeout(function(){
+      sayLines(job.lines, function(){ busy = false; setTimeout(runQueue, 600); });
+    }, wait * 1000);
+  }
+  // ボタンを押したその場で読み上げる（iPhone・iPadは、画面操作の瞬間に読み上げを始めないと、以後も声が出ない）
+  // 読み終わるまでは、チャイムのお知らせを待たせる
+  function sayNow(text){
+    if (muted) return;
+    busy = true;
+    sayLines([text], function(){ busy = false; setTimeout(runQueue, 400); });
+  }
+  function joinNames(list){ return list.map(function(n){ return n + "さん"; }).join("、"); }
 
   // ---- 患者 ----
   function addPatient(){
@@ -328,6 +395,7 @@ body.display .card .remain .num{font-size:clamp(5rem,11vw,9rem)}
     var realNow = Date.now(), d = new Date(realNow);
     $("clock").textContent = pad(d.getHours()) + ":" + pad(d.getMinutes()) + ":" + pad(d.getSeconds());
     var changed = false;
+    var ends = [], last15s = [], halves = [];
     patients.forEach(function(p){
       var c = document.getElementById("c-" + p.id); if (!c) return;
       var paused = !!p.pausedAt;
@@ -365,16 +433,22 @@ body.display .card .remain .num{font-size:clamp(5rem,11vw,9rem)}
       if (paused) return;
       if (!p.done.end && now >= p.end){
         p.done.end = p.done.last15 = p.done.half = true; changed = true;
-        speak(p.name + "さん、終了時間です。お疲れさまでした。");
+        ends.push(p.name);
       } else if (!p.done.last15 && now >= p.end - 15*60000 && now >= p.start){
         p.done.last15 = true; changed = true;
         if (now >= p.start + 30*60000) p.done.half = true;
-        speak(p.name + "さん、残り15分です。");
+        last15s.push(p.name);
       } else if (!p.done.half && now >= p.start + 30*60000){
         p.done.half = true; changed = true;
-        speak(p.name + "さん、30分経過しました。");
+        halves.push(p.name);
       }
     });
+    // 同じタイミングの人はまとめて1回のお知らせにする（終了は2回繰り返す）
+    var lines = [];
+    if (ends.length){ var e = joinNames(ends) + "、終了時間です。"; lines.push(e, e, "お疲れさまでした。"); }
+    if (last15s.length) lines.push(joinNames(last15s) + "、残り15分です。");
+    if (halves.length) lines.push(joinNames(halves) + "、30分経過しました。");
+    if (lines.length) announce(ends.length ? "end" : "notice", lines);
     if (changed) save();
   }
 
@@ -450,14 +524,14 @@ body.display .card .remain .num{font-size:clamp(5rem,11vw,9rem)}
   dlg.addEventListener("click", function(ev){ if (ev.target === dlg) closeEdit(); });
   dlg.addEventListener("keydown", function(ev){ if (ev.key === "Enter" && ev.target.tagName === "INPUT" && !ev.isComposing) $("eSave").click(); });
 
-  // iOS などで音声を有効にするため、最初の操作時に無音で一度鳴らす
-  var unlocked = false;
+  // iPhone・iPadは、画面に触れた操作の中で一度音を出しておかないと、あとで自動で鳴らせない。
+  // ボタン操作のたびに、ほぼ無音のチャイムを鳴らして準備しておく（声の準備は sayNow で行う）
   function unlockAudio(){
-    if (unlocked) return; unlocked = true;
     try {
-      audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
-      audioCtx.resume();
-      if ("speechSynthesis" in window){ var u = new SpeechSynthesisUtterance(" "); u.volume = 0; speechSynthesis.speak(u); }
+      ctx();
+      var o = audioCtx.createOscillator(), g = audioCtx.createGain();
+      g.gain.value = 0.0001; o.connect(g).connect(audioCtx.destination);
+      o.start(); o.stop(audioCtx.currentTime + 0.05);
     } catch(e){}
   }
   document.addEventListener("pointerdown", unlockAudio, {once:true});
@@ -499,8 +573,20 @@ body.display .card .remain .num{font-size:clamp(5rem,11vw,9rem)}
   $("testBtn").addEventListener("click", function(){
     unlockAudio();
     var was = muted; muted = false;
-    speak("音声テストです。山田さん、残り15分です。", true);
+    sayNow("音声テストです。");
+    announce("notice", ["山田さん、残り15分です。"]);
+    announce("end", ["山田さん、終了時間です。"]);
     muted = was;
+    // 音が出ないときの原因調べ用：10秒後に状態を画面に表示する
+    $("diag").textContent = "音声テスト中…";
+    setTimeout(function(){
+      var vs = ("speechSynthesis" in window) ? speechSynthesis.getVoices() : [];
+      var ja = vs.filter(function(v){ return /^ja/i.test(v.lang); });
+      $("diag").textContent = "【音声の診断】日本語の声：" + ja.length + "個" +
+        "／使用する声：" + (jaVoice ? jaVoice.name : "端末まかせ") +
+        "／チャイム：" + (audioCtx ? audioCtx.state : "未起動") +
+        "／消音対策：" + (navigator.audioSession ? navigator.audioSession.type : "非対応");
+    }, 10000);
   });
   function updateMute(){
     $("muteBtn").textContent = "読み上げ：" + (muted ? "オフ" : "オン");
@@ -510,6 +596,12 @@ body.display .card .remain .num{font-size:clamp(5rem,11vw,9rem)}
   $("displayBtn").addEventListener("click", function(){
     var on = document.body.classList.toggle("display");
     $("displayBtn").textContent = on ? "入力に戻る" : "表示モード";
+    // 表示モード中も読み上げできるよう、ボタン操作の中で一度声を出して準備する
+    if (on){
+      unlockAudio();
+      if (muted) alert("読み上げがオフになっています。読み上げる場合は「読み上げ：オフ」を押してオンにしてください。");
+      else sayNow("表示モードです。読み上げはオンです。");
+    }
     if (on && document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(function(){});
     if (!on && document.fullscreenElement) document.exitFullscreen().catch(function(){});
   });
