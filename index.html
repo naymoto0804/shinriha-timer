@@ -126,7 +126,7 @@ body.display .card .remain .num{font-size:clamp(5rem,11vw,9rem)}
 <body>
 <div class="wrap">
   <header>
-    <h1>心リハ外来タイマー <span class="ver">Ver.5</span></h1>
+    <h1>心リハ外来タイマー <span class="ver">Ver.6</span></h1>
     <div class="tools">
       <button id="testBtn" class="hide-in-display" type="button">音声テスト</button>
       <button id="muteBtn" type="button" aria-pressed="false">読み上げ：オン</button>
@@ -160,7 +160,7 @@ body.display .card .remain .num{font-size:clamp(5rem,11vw,9rem)}
   <div class="grid" id="grid"></div>
 
   <p class="notice" id="offlineStat"></p>
-  <p class="notice">読み上げは「30分経過」「残り15分」「終了時間」の3回です。画面を表示したままにしてください（ブラウザを裏に回すと音声が止まることがあります）。このアプリはインターネットに接続せず動作し、入力内容はこの端末のブラウザにだけ保存されます（外部には送信されません）。<br>Ver.5（2026-10-23）</p>
+  <p class="notice">読み上げは「30分経過」「残り15分」「終了時間」の3回です。画面を表示したままにしてください（ブラウザを裏に回すと音声が止まることがあります）。このアプリはインターネットに接続せず動作し、入力内容はこの端末のブラウザにだけ保存されます（外部には送信されません）。<br>Ver.6（2026-10-30）</p>
 </div>
 
 <dialog id="dlg" aria-labelledby="dlgTitle">
@@ -264,6 +264,9 @@ body.display .card .remain .num{font-size:clamp(5rem,11vw,9rem)}
       sel.appendChild(o);
     });
     sel.value = list.some(function(v){ return v.voiceURI === voiceURI; }) ? voiceURI : "";
+    // 選べる声が1つ以下なら、選択欄は出さない
+    sel.parentNode.style.display = list.length > 1 ? "" : "none";
+    if (list.length <= 1 && voiceURI){ voiceURI = ""; save(); }
   }
   if ("speechSynthesis" in window){ pickVoice(); speechSynthesis.onvoiceschanged = pickVoice; }
 
@@ -328,7 +331,9 @@ body.display .card .remain .num{font-size:clamp(5rem,11vw,9rem)}
   function utter(text, vol){
     var u = new SpeechSynthesisUtterance(text);
     u.lang = "ja-JP"; u.rate = 1.0; u.pitch = 1; u.volume = vol == null ? 1 : vol;
-    if (jaVoice) u.voice = jaVoice;
+    // 選べる声が1つだけの端末（iPhone・iPad）では声を指定せず、端末の標準の声にまかせる
+    // （iPadなどでは声を指定すると無音になることがあるため）
+    if (jaVoice && (voiceURI || jaVoices().length > 1)) u.voice = jaVoice;
     return u;
   }
   // 文を1つずつ順番に読む（読み終わりの合図が来ない端末もあるので、時間でも次へ進める）
@@ -359,21 +364,14 @@ body.display .card .remain .num{font-size:clamp(5rem,11vw,9rem)}
     var job = queue.shift();
     var wait = chime(job.kind);
     setTimeout(function(){
-      quietChime();
       sayLines(job.lines, function(){ busy = false; setTimeout(runQueue, 600); });
     }, wait * 1000);
-  }
-  // iPhone・iPadはチャイムの仕組みが動いていると読み上げの声が小さくなるため、読む前に止める
-  // （次のチャイムのときに ctx() が再開させる）
-  function quietChime(){
-    try { if (audioCtx && audioCtx.state === "running") audioCtx.suspend(); } catch(e){}
   }
   // ボタンを押したその場で読み上げる（iPhone・iPadは、画面操作の瞬間に読み上げを始めないと、以後も声が出ない）
   // 読み終わるまでは、チャイムのお知らせを待たせる
   function sayNow(text){
     if (muted) return;
     busy = true;
-    quietChime();
     sayLines([text], function(){ busy = false; setTimeout(runQueue, 400); });
   }
   function joinNames(list){ return list.map(function(n){ return n + "さん"; }).join("、"); }
