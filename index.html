@@ -126,7 +126,7 @@ body.display .card .remain .num{font-size:clamp(5rem,11vw,9rem)}
 <body>
 <div class="wrap">
   <header>
-    <h1>心リハ外来タイマー <span class="ver">Ver.6</span></h1>
+    <h1>心リハ外来タイマー <span class="ver">Ver.7</span></h1>
     <div class="tools">
       <button id="testBtn" class="hide-in-display" type="button">音声テスト</button>
       <button id="muteBtn" type="button" aria-pressed="false">読み上げ：オン</button>
@@ -160,7 +160,7 @@ body.display .card .remain .num{font-size:clamp(5rem,11vw,9rem)}
   <div class="grid" id="grid"></div>
 
   <p class="notice" id="offlineStat"></p>
-  <p class="notice">読み上げは「30分経過」「残り15分」「終了時間」の3回です。画面を表示したままにしてください（ブラウザを裏に回すと音声が止まることがあります）。このアプリはインターネットに接続せず動作し、入力内容はこの端末のブラウザにだけ保存されます（外部には送信されません）。<br>Ver.6（2026-10-30）</p>
+  <p class="notice">読み上げは「30分経過」「残り15分」「終了時間」の3回です。画面を表示したままにしてください（ブラウザを裏に回すと音声が止まることがあります）。このアプリはインターネットに接続せず動作し、入力内容はこの端末のブラウザにだけ保存されます（外部には送信されません）。<br>Ver.7（2026-11-06）</p>
 </div>
 
 <dialog id="dlg" aria-labelledby="dlgTitle">
@@ -398,7 +398,8 @@ body.display .card .remain .num{font-size:clamp(5rem,11vw,9rem)}
     patients.push(p);
     patients.sort(function(a,b){ return a.end - b.end; });
     save();
-    unlockAudio();
+    // 追加したその場で名前を読み上げる（iPadは、ボタン操作の中で一度声を出すと、時間が来たときも読み上げられる）
+    unlockAudio(); sayNow(name + "さんを追加しました。");
     $("nameIn").value = ""; $("nameIn").focus();
     render(); tick();
   }
